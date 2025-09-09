@@ -5,10 +5,30 @@ import subprocess
 import re
 from typing import List, Dict, Any
 from datetime import datetime
+import sys
 
 app = Flask(__name__)
 
 DB_FILE = "winget_packages.db"
+
+
+def log_with_time(message: str) -> None:
+    """Print a timestamped log message."""
+    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}")
+
+
+def print_progress(current: int, total: int) -> None:
+    """Display a simple progress bar similar to pip install."""
+    bar_length = 30
+    progress = current / total if total else 0
+    filled = int(bar_length * progress)
+    bar = "#" * filled + "-" * (bar_length - filled)
+    sys.stdout.write(
+        f"\r[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [{bar}] {current}/{total} ({progress*100:.1f}%)"
+    )
+    sys.stdout.flush()
+    if current >= total:
+        sys.stdout.write("\n")
 
 # Swagger/OpenAPI specification
 SWAGGER_SPEC = {
@@ -130,15 +150,11 @@ def init_db():
 # Parser la sortie de winget list
 def parse_winget_output(output: str) -> List[Dict[str, str]]:
     """Parse the raw output from ``winget list`` into a structured list."""
-    print(
-        f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Début du parsing de la sortie winget..."
-    )
+    log_with_time("Début du parsing de la sortie winget...")
     packages: List[Dict[str, str]] = []
     lines = output.strip().split("\n")
     if len(lines) < 2:
-        print(
-            f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Aucune donnée valide à parser."
-        )
+        log_with_time("Aucune donnée valide à parser.")
         return packages
 
     # Find column indexes dynamically from the header line
@@ -148,9 +164,7 @@ def parse_winget_output(output: str) -> List[Dict[str, str]]:
         idx_id = header_parts.index("id")
         idx_version = header_parts.index("version")
     except ValueError:
-        print(
-            f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Impossible de détecter les colonnes."
-        )
+        log_with_time("Impossible de détecter les colonnes.")
         return packages
 
     for line in lines[1:]:
@@ -166,9 +180,7 @@ def parse_winget_output(output: str) -> List[Dict[str, str]]:
                 }
             )
 
-    print(
-        f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {len(packages)} packages parsés."
-    )
+    log_with_time(f"{len(packages)} packages parsés.")
     return packages
 
 # Route pour rafraîchir la DB via winget
@@ -176,43 +188,40 @@ def parse_winget_output(output: str) -> List[Dict[str, str]]:
 def refresh_packages():
     """Refresh the package cache by invoking ``winget list``."""
     try:
-        print(
-            f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Lancement de winget list..."
-        )
+        log_with_time("Lancement de winget list...")
+        start_cmd = datetime.now()
         result = subprocess.run(
             ["winget", "list", "--accept-source-agreements"],
             capture_output=True,
             text=True,
             timeout=60,
         )
+        log_with_time(
+            f"Commande winget terminée en {(datetime.now() - start_cmd).total_seconds():.2f}s"
+        )
     except FileNotFoundError:
         msg = "Commande winget introuvable"
-        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}")
+        log_with_time(msg)
         return jsonify({"error": msg}), 500
     except Exception as e:  # subprocess error
-        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Erreur: {e}")
+        log_with_time(f"Erreur: {e}")
         return jsonify({"error": str(e)}), 500
 
     if result.returncode != 0:
-        print(
-            f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Erreur winget: {result.stderr}"
-        )
+        log_with_time(f"Erreur winget: {result.stderr}")
         return jsonify({"error": f"Erreur winget: {result.stderr}"}), 500
 
     parsed_packages = parse_winget_output(result.stdout)
     if not parsed_packages:
-        print(
-            f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Aucun package à insérer."
-        )
+        log_with_time("Aucun package à insérer.")
         return jsonify({"error": "Aucun package parsé"}), 400
 
     # Stocker en DB avec progression
     total = len(parsed_packages)
-    print(
-        f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Insertion de {total} packages dans la base..."
-    )
+    log_with_time(f"Insertion de {total} packages dans la base...")
     with sqlite3.connect(DB_FILE) as conn:
         cursor = conn.cursor()
+        print_progress(0, total)
         for i, pkg in enumerate(parsed_packages, 1):
             cursor.execute(
                 """
@@ -221,14 +230,9 @@ def refresh_packages():
                 """,
                 (pkg["name"], pkg["package_id"], pkg["version"]),
             )
-            if i % 50 == 0 or i == total:
-                print(
-                    f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {i}/{total} packages insérés..."
-                )
+            print_progress(i, total)
 
-    print(
-        f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Insertion terminée : {total} packages."
-    )
+    log_with_time(f"Insertion terminée : {total} packages.")
     return jsonify(
         {
             "success": True,
@@ -316,5 +320,5 @@ def get_microsoft_packages():
 
 if __name__ == '__main__':
     init_db()
-    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Lancement du serveur Flask sur le port 4006...")
+    log_with_time("Lancement du serveur Flask sur le port 4006...")
     app.run(debug=True, host='0.0.0.0', port=4006)
