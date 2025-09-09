@@ -6,6 +6,9 @@ import re
 from typing import List, Dict, Any
 from datetime import datetime
 import sys
+import json
+GREEN = "\033[92m"
+RESET = "\033[0m"
 
 app = Flask(__name__)
 
@@ -18,11 +21,11 @@ def log_with_time(message: str) -> None:
 
 
 def print_progress(current: int, total: int) -> None:
-    """Display a simple progress bar similar to pip install."""
+    """Display a colored progress bar."""
     bar_length = 30
     progress = current / total if total else 0
     filled = int(bar_length * progress)
-    bar = "#" * filled + "-" * (bar_length - filled)
+    bar = GREEN + "#" * filled + RESET + "-" * (bar_length - filled)
     sys.stdout.write(
         f"\r[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [{bar}] {current}/{total} ({progress*100:.1f}%)"
     )
@@ -38,6 +41,16 @@ SWAGGER_SPEC = {
         "/api/refresh": {
             "post": {
                 "summary": "Rafraîchir la liste des packages via winget",
+                "responses": {
+                    "200": {"description": "Packages mis à jour"},
+                    "400": {"description": "Erreur de parsing"},
+                    "500": {"description": "Erreur winget"},
+                },
+            }
+        },
+        "/api/fullupdate": {
+            "post": {
+                "summary": "Mettre à jour les packages via winget search JSON",
                 "responses": {
                     "200": {"description": "Packages mis à jour"},
                     "400": {"description": "Erreur de parsing"},
@@ -241,6 +254,95 @@ def refresh_packages():
         }
     )
 
+
+@app.route('/api/fullupdate', methods=['POST'])
+def full_update() -> Response:
+    """Run ``winget search`` with JSON output and refresh the DB."""
+    try:
+        log_with_time("Lancement de winget search (full update)...")
+        start_cmd = datetime.now()
+        result = subprocess.run(
+            [
+                "winget",
+                "search",
+                "",
+                "--source",
+                "winget",
+                "--accept-source-agreements",
+                "--output",
+                "json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        log_with_time(
+            f"Commande winget terminée en {(datetime.now() - start_cmd).total_seconds():.2f}s"
+        )
+    except FileNotFoundError:
+        msg = "Commande winget introuvable"
+        log_with_time(msg)
+        return jsonify({"error": msg}), 500
+    except Exception as e:
+        log_with_time(f"Erreur: {e}")
+        return jsonify({"error": str(e)}), 500
+
+    if result.returncode != 0:
+        log_with_time(f"Erreur winget: {result.stderr}")
+        return jsonify({"error": f"Erreur winget: {result.stderr}"}), 500
+
+    with open("winget_packages.json", "w", encoding="utf-8") as f:
+        f.write(result.stdout)
+
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError as e:
+        log_with_time(f"Erreur JSON: {e}")
+        return jsonify({"error": "Erreur JSON"}), 400
+
+    packages: List[Dict[str, str]] = []
+    if isinstance(data, dict):
+        if "sources" in data:
+            for src in data.get("sources", []):
+                for pkg in src.get("packages", []):
+                    packages.append(
+                        {
+                            "name": pkg.get("name", ""),
+                            "package_id": pkg.get("id") or pkg.get("packageIdentifier", ""),
+                            "version": pkg.get("version", ""),
+                        }
+                    )
+        elif "data" in data:
+            for pkg in data.get("data", []):
+                packages.append(
+                    {
+                        "name": pkg.get("Name", ""),
+                        "package_id": pkg.get("Id") or pkg.get("PackageIdentifier", ""),
+                        "version": pkg.get("Version", ""),
+                    }
+                )
+
+    if not packages:
+        log_with_time("Aucun package à insérer.")
+        return jsonify({"error": "Aucun package parsé"}), 400
+
+    total = len(packages)
+    log_with_time(f"Insertion de {total} packages dans la base (full update)...")
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.cursor()
+        print_progress(0, total)
+        for i, pkg in enumerate(packages, 1):
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO packages (name, package_id, version)
+                VALUES (?, ?, ?)
+                """,
+                (pkg["name"], pkg["package_id"], pkg["version"]),
+            )
+            print_progress(i, total)
+
+    log_with_time(f"Insertion terminée : {total} packages.")
+    return jsonify({"success": True, "count": total, "message": f"{total} packages stockés/mis à jour"})
 # Fonction pour interroger la DB
 def query_packages(
     query: str = "",

@@ -14,6 +14,7 @@ $publisher = isset($_GET['publisher']) ? trim($_GET['publisher']) : ""; // Filtr
 $query = isset($_GET['query']) ? trim($_GET['query']) : ""; // Requête de recherche
 $is_microsoft = isset($_GET['microsoft']) && $_GET['microsoft'] === '1'; // Bouton Microsoft
 $refresh = isset($_GET['refresh']) && $_GET['refresh'] === '1'; // Rafraîchissement de la liste
+$fullupdate = isset($_GET['fullupdate']) && $_GET['fullupdate'] === '1'; // Full update
 
 // Si bouton Microsoft cliqué, forcer l'éditeur
 if ($is_microsoft) {
@@ -28,6 +29,14 @@ if ($refresh) {
     $refresh_message = $refresh_success
         ? ($refresh_result['count'] . ' packages rafraîchis avec succès !')
         : ($refresh_result['error'] ?? 'Erreur lors du rafraîchissement');
+}
+
+if ($fullupdate) {
+    $fu_result = fetch_api("$base_url/fullupdate", 'POST');
+    $fu_success = isset($fu_result['success']) && $fu_result['success'];
+    $fu_message = $fu_success
+        ? ($fu_result['count'] . ' packages mis à jour !')
+        : ($fu_result['error'] ?? 'Erreur lors du full update');
 }
 
 // Fonction pour appeler l'API avec diagnostic détaillé
@@ -99,6 +108,7 @@ $sort_param = $sort ? '&sort=' . urlencode($sort) : '';
 $microsoft_param = $is_microsoft ? '&microsoft=1' : '';
 $page_size_param = '&pageSize=' . $page_size;
 $refresh_link = '?refresh=1&page=1' . $search_param . $sort_param . $microsoft_param . $page_size_param;
+$fullupdate_link = '?fullupdate=1&page=1' . $search_param . $sort_param . $microsoft_param . $page_size_param;
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -139,6 +149,7 @@ $refresh_link = '?refresh=1&page=1' . $search_param . $sort_param . $microsoft_p
                     <a href="?page=1&pageSize=<?php echo $page_size; ?>" class="btn btn-secondary w-100 mt-2">Réinitialiser</a>
                     <a href="?page=1&publisher=Microsoft&microsoft=1&pageSize=<?php echo $page_size; ?>" class="btn btn-info w-100 mt-2">Microsoft</a>
                     <a href="<?php echo $refresh_link; ?>" class="btn btn-warning w-100 mt-2">Rafraîchir</a>
+                    <a href="<?php echo $fullupdate_link; ?>" class="btn btn-danger w-100 mt-2">Full Update</a>
                 </div>
             </div>
             <?php if ($is_microsoft): ?>
@@ -153,6 +164,12 @@ $refresh_link = '?refresh=1&page=1' . $search_param . $sort_param . $microsoft_p
         <?php if (isset($refresh_message)): ?>
             <div class="alert <?php echo $refresh_success ? 'alert-success' : 'alert-danger'; ?>">
                 <?php echo htmlspecialchars($refresh_message); ?>
+            </div>
+        <?php endif; ?>
+
+        <?php if (isset($fu_message)): ?>
+            <div class="alert <?php echo $fu_success ? 'alert-success' : 'alert-danger'; ?>">
+                <?php echo htmlspecialchars($fu_message); ?>
             </div>
         <?php endif; ?>
 
