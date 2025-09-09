@@ -114,7 +114,19 @@ $refresh_link = '?refresh=1&page=1' . $search_param . $sort_param . $microsoft_p
 <body>
     <div class="container mt-5">
         <h1 class="mb-4">Test API Winget (localhost:4006)</h1>
-        
+
+        <!-- Boutons pour tester rapidement les routes de l'API -->
+        <div class="mb-4">
+            <h2 class="h5">Tester les routes de l'API</h2>
+            <div class="btn-group" role="group">
+                <a href="<?php echo $base_url; ?>/packages" target="_blank" class="btn btn-outline-primary">GET /packages</a>
+                <a href="<?php echo $base_url; ?>/packages/microsoft" target="_blank" class="btn btn-outline-secondary">GET /packages/microsoft</a>
+                <form method="post" action="<?php echo $base_url; ?>/refresh" target="_blank" class="d-inline">
+                    <button type="submit" class="btn btn-outline-warning">POST /refresh</button>
+                </form>
+            </div>
+        </div>
+
         <!-- Formulaire de recherche -->
         <form method="GET" class="mb-4">
             <div class="row g-3">
@@ -172,9 +184,11 @@ $refresh_link = '?refresh=1&page=1' . $search_param . $sort_param . $microsoft_p
             <div class="alert alert-info">Affichage de <?php echo count($packages); ?> packages (page <?php echo $current_page; ?> sur <?php echo $total_pages; ?>).</div>
             
             <!-- Tableau des packages -->
-            <table class="table table-striped table-hover">
+            <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle">
                 <thead class="table-dark">
                     <tr>
+                        <th>#</th>
                         <th>Nom</th>
                         <th>Éditeur</th>
                         <th>ID</th>
@@ -182,8 +196,9 @@ $refresh_link = '?refresh=1&page=1' . $search_param . $sort_param . $microsoft_p
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($packages as $pkg): ?>
+                    <?php foreach ($packages as $index => $pkg): ?>
                         <tr>
+                            <td><?php echo ($index + 1) + ($current_page - 1) * $page_size; ?></td>
                             <td><?php echo htmlspecialchars($pkg['name'] ?? 'N/A'); ?></td>
                             <td><?php echo htmlspecialchars($pkg['publisher'] ?? 'N/A'); ?></td>
                             <td><?php echo htmlspecialchars($pkg['package_id'] ?? 'N/A'); ?></td>
@@ -192,6 +207,7 @@ $refresh_link = '?refresh=1&page=1' . $search_param . $sort_param . $microsoft_p
                     <?php endforeach; ?>
                 </tbody>
             </table>
+            </div>
             
             <!-- Pagination -->
             <?php if ($total_pages > 1): ?>
