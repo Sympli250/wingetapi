@@ -8,7 +8,7 @@ error_reporting(E_ALL);
 // Configuration de l'API
 $base_url = "http://localhost:4006/api";
 $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
-$page_size = 50; // Nombre de packages par page
+$page_size = isset($_GET['pageSize']) ? max(1, min(100, intval($_GET['pageSize']))) : 50; // Nombre de packages par page
 $sort = isset($_GET['sort']) ? $_GET['sort'] : "name"; // Tri par défaut
 $publisher = isset($_GET['publisher']) ? trim($_GET['publisher']) : ""; // Filtre par éditeur
 $query = isset($_GET['query']) ? trim($_GET['query']) : ""; // Requête de recherche
@@ -81,12 +81,13 @@ $data = fetch_api($endpoint, 'GET', $params);
 $error = isset($data['error']) ? $data['error'] : "";
 $packages = $data && isset($data['Packages']) && !$error ? $data['Packages'] : [];
 $total = $data && isset($data['Total']) ? $data['Total'] : 0;
-$total_pages = $total > 0 ? ceil($total / $page_size) : 1;
+$total_pages = $data && isset($data['TotalPages']) ? $data['TotalPages'] : ($total > 0 ? ceil($total / $page_size) : 1);
 $current_page = $data && isset($data['CurrentPage']) ? $data['CurrentPage'] : $page;
 
 $search_param = $publisher ? '&publisher=' . urlencode($publisher) : ($query ? '&query=' . urlencode($query) : '');
 $sort_param = $sort ? '&sort=' . urlencode($sort) : '';
 $microsoft_param = $is_microsoft ? '&microsoft=1' : '';
+$page_size_param = '&pageSize=' . $page_size;
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -106,10 +107,10 @@ $microsoft_param = $is_microsoft ? '&microsoft=1' : '';
         <!-- Formulaire de recherche -->
         <form method="GET" class="mb-4">
             <div class="row g-3">
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <input type="text" name="query" class="form-control" placeholder="Rechercher (ex. edge)..." value="<?php echo htmlspecialchars($query); ?>" <?php echo $publisher || $is_microsoft ? 'disabled' : ''; ?>>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <input type="text" name="publisher" class="form-control" placeholder="Filtrer par éditeur (ex. Mozilla)..." value="<?php echo htmlspecialchars($publisher); ?>" <?php echo $is_microsoft ? 'disabled' : ''; ?>>
                 </div>
                 <div class="col-md-2">
@@ -120,9 +121,12 @@ $microsoft_param = $is_microsoft ? '&microsoft=1' : '';
                     </select>
                 </div>
                 <div class="col-md-2">
+                    <input type="number" name="pageSize" class="form-control" min="1" max="100" value="<?php echo $page_size; ?>">
+                </div>
+                <div class="col-md-2">
                     <button type="submit" class="btn btn-primary w-100">Filtrer</button>
-                    <a href="?page=1" class="btn btn-secondary w-100 mt-2">Réinitialiser</a>
-                    <a href="?page=1&publisher=Microsoft&microsoft=1" class="btn btn-info w-100 mt-2">Microsoft</a>
+                    <a href="?page=1&pageSize=<?php echo $page_size; ?>" class="btn btn-secondary w-100 mt-2">Réinitialiser</a>
+                    <a href="?page=1&publisher=Microsoft&microsoft=1&pageSize=<?php echo $page_size; ?>" class="btn btn-info w-100 mt-2">Microsoft</a>
                     <a href="#" class="btn btn-warning w-100 mt-2" onclick="refreshPackages()">Rafraîchir</a>
                 </div>
             </div>
@@ -155,6 +159,7 @@ $microsoft_param = $is_microsoft ? '&microsoft=1' : '';
                 <thead class="table-dark">
                     <tr>
                         <th>Nom</th>
+                        <th>Éditeur</th>
                         <th>ID</th>
                         <th>Version</th>
                     </tr>
@@ -163,6 +168,7 @@ $microsoft_param = $is_microsoft ? '&microsoft=1' : '';
                     <?php foreach ($packages as $pkg): ?>
                         <tr>
                             <td><?php echo htmlspecialchars($pkg['name'] ?? 'N/A'); ?></td>
+                            <td><?php echo htmlspecialchars($pkg['publisher'] ?? 'N/A'); ?></td>
                             <td><?php echo htmlspecialchars($pkg['package_id'] ?? 'N/A'); ?></td>
                             <td><?php echo htmlspecialchars($pkg['version'] ?? 'N/A'); ?></td>
                         </tr>
@@ -175,15 +181,15 @@ $microsoft_param = $is_microsoft ? '&microsoft=1' : '';
                 <nav aria-label="Pagination">
                     <ul class="pagination justify-content-center">
                         <li class="page-item <?php echo $current_page <= 1 ? 'disabled' : ''; ?>">
-                            <a class="page-link" href="?page=<?php echo $current_page - 1 . $search_param . $sort_param . $microsoft_param; ?>">Précédent</a>
+                            <a class="page-link" href="?page=<?php echo $current_page - 1 . $search_param . $sort_param . $microsoft_param . $page_size_param; ?>">Précédent</a>
                         </li>
                         <?php for ($i = max(1, $current_page - 2); $i <= min($total_pages, $current_page + 2); $i++): ?>
                             <li class="page-item <?php echo $i === $current_page ? 'active' : ''; ?>">
-                                <a class="page-link" href="?page=<?php echo $i . $search_param . $sort_param . $microsoft_param; ?>"><?php echo $i; ?></a>
+                                <a class="page-link" href="?page=<?php echo $i . $search_param . $sort_param . $microsoft_param . $page_size_param; ?>"><?php echo $i; ?></a>
                             </li>
                         <?php endfor; ?>
                         <li class="page-item <?php echo $current_page >= $total_pages ? 'disabled' : ''; ?>">
-                            <a class="page-link" href="?page=<?php echo $current_page + 1 . $search_param . $sort_param . $microsoft_param; ?>">Suivant</a>
+                            <a class="page-link" href="?page=<?php echo $current_page + 1 . $search_param . $sort_param . $microsoft_param . $page_size_param; ?>">Suivant</a>
                         </li>
                     </ul>
                 </nav>
